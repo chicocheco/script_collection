@@ -5,17 +5,19 @@ from collections import defaultdict
 import pprint
 
 EPISODE_RE = re.compile(r'S\d\dE\d\d', re.IGNORECASE)
+EP_VERBOSE_RE =
 
+# samples:
 # The.Leftovers.S02E01.HDTV.x264-KILLERS.srt
-# falling.skies.s02e04.dvdrip.xvid-demand
 # Falling.Skies.S05E01.HDTV.x264-KILLERS.mp4
+# TODO: Falling Skies - Season 5 - Ep. 01 - Find Your Warrior [HDTV.X264]-KiLLeRS.srt
 
 dd = defaultdict(dict)
 
 for _, _, files in os.walk('.'):
     
     for file in files:
-        print(file)
+        # print(file)
         if file.endswith('.mkv') or file.endswith('.mp4') or file.endswith('.avi'):
             match = EPISODE_RE.search(file).group().capitalize()
             dd[match]['video'] = file
@@ -27,7 +29,7 @@ for _, _, files in os.walk('.'):
                 dd[match]['sub'] = file
 
 # for debugging
-pprint.pprint(dd)
+# pprint.pprint(dd)
 
 for value in dd.values():
     if len(value) > 1:
