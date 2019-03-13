@@ -1,1 +1,1 @@
-# script_collection
+# Collection of my simple scripts
