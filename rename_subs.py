@@ -5,7 +5,6 @@ from collections import defaultdict
 import pprint
 
 EPISODE_RE = re.compile(r'S\d\dE\d\d', re.IGNORECASE)
-EP_VERBOSE_RE =
 
 # samples:
 # The.Leftovers.S02E01.HDTV.x264-KILLERS.srt
@@ -40,7 +39,7 @@ for value in dd.values():
             suff_sub = PurePath(value['sub']).suffix
             new_sub = video_filename + suff_sub
             print(f'{value["sub"]}  >>>  {new_sub}')
-            # Path(value['sub']).rename(new_sub)
+            Path(value['sub']).rename(new_sub)
     else:
         if value['sub']:
             print(f'\t No video file found for {value["sub"]}')
