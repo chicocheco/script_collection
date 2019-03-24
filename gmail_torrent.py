@@ -35,16 +35,17 @@ def email_torrent(user_name, password):
     # Search for emails with "torrent" in the subject field.
     imap_session.select('INBOX', readonly=False)
     # TODO: keys = ('torrent', 'torent', 'tor', 'tr')
-    result, email_data = imap_session.search(None, '(SUBJECT torrent)')
+    search_key = 'torrent'
+    result, email_data = imap_session.search(None, f'(SUBJECT {search_key})')
 
     # Get a list of their UIDs.
     email_uids = email_data[0].split()
     emails_found = len(email_uids)
 
     if emails_found > 0:
-        print(f'Found {emails_found} emails with subject "torrent":')
+        print(f'Found {emails_found} emails with subject "{search_key}":')
     else:
-        print('No emails with subject "torrent" were found.')
+        print(f'No emails with subject "{search_key}" were found.')
 
     torr_files = []
     # fetch each UID's entire raw message.
