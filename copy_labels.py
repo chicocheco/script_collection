@@ -22,24 +22,25 @@ label consist of a date that has passed, delete it
 import email
 # import getpass
 import imaplib
-import os
 import smtplib
-import subprocess
-from pathlib import Path
 import sys
 import time
-from collections import namedtuple
+from datetime import datetime
 from email.mime.text import MIMEText
+from pathlib import Path
 
 from slugify import slugify
-EmailData = namedtuple('EmailData', 'date sender')
+
+usb_drive_root = Path('/') / 'run' / 'media' / 'standa' / 'KINGSTON'
+vinted_labels = Path('!imprimir')
+vinted_labels_expired = Path('vinted_labels_expired')
+vinted_labels_used = Path('vinted_labels_used')
 
 
 def get_labels(user_name, password):
     imap_session = get_gmail_imap_session(password, user_name)
     email_uids = search_keywords(imap_session)
 
-    pdf_files = []
     # fetch each UID's entire raw message.
     for email_uid in email_uids:
         result, email_data = imap_session.fetch(email_uid, '(RFC822)')
@@ -51,18 +52,28 @@ def get_labels(user_name, password):
         # walk all parts of the raw message in one email
         for part in email_body.walk():
             date, sender, subject = get_metadata(date, part, sender, subject)
-            get_body(date, email_uid, part, sender)
-            get_attached_pdf_file(part, subject)
+            search_new_labels(date, email_uid, part, sender, subject)
 
         # after one parsed email, send one confirmation email
-        send_confirmation(password, sender, pdf_files, user_name)
-        # delete_mail(email_uid, imap_session)
-    logout(imap_session)
-    repeat(password, user_name)
+        # TODO: temporarily disabled:
+        # send_confirmation(password, sender, pdf_files, user_name)
+        delete_mail(email_uid, imap_session)
+    log_out(imap_session)
+    # TODO: temporarily disabled:
+    # repeat(password, user_name)
+
+
+def search_new_labels(date, email_uid, part, sender, subject):
+    label_expiration_date = datetime.strptime(subject[-16:], '%d/%m/%Y %H:%M')
+    today = datetime.now()
+    if label_expiration_date > today:
+        get_body(date, email_uid, part, sender)
+        get_attached_pdf(part, subject)
 
 
 def get_gmail_imap_session(password, user_name):
     # instantiate IMAP4 protocol that connects over an SSL
+    print('\nLogging in the gmail account...')
     imap_session = imaplib.IMAP4_SSL('imap.gmail.com')
     try:
         result, account_details = imap_session.login(user_name, password)
@@ -79,8 +90,7 @@ def get_gmail_imap_session(password, user_name):
 
 def search_keywords(imap_session):
     # Search for emails with "torrent" in the subject field.
-    imap_session.select('INBOX', readonly=True)
-    # TODO: keys = ('torrent', 'torent', 'tor', 'tr')
+    imap_session.select('INBOX', readonly=False)
     search_key = 'Utilizar+antes+del'
     result, email_data = imap_session.search(None, f'(SUBJECT {search_key})')
     # Get a list of their UIDs.
@@ -107,26 +117,33 @@ def get_body(date, email_uid, part, sender):
     text_included = part.get_content_type() == 'text/plain'
     if text_included:
         uid_decoded = email_uid.decode('ascii')
-        # TODO: fix formatting
-        print(70 * '-', 'START MESSAGE', 70 * '-',
-              f'\nMessage with UID {uid_decoded} from {sender}, received on {date}:\n',
+        header_text = f'\nMessage with UID {uid_decoded} from {sender}, received on {date}:\n'
+        print('START MESSAGE'.center(len(header_text), '-'),
+              header_text,
               f'\n\t{part.get_payload(decode=True).decode(encoding="utf-8")}\n')
 
 
-def get_attached_pdf_file(part, subject):
+def get_attached_pdf(part, subject):
     file_name = part.get_filename()
     if file_name and file_name.lower().endswith('.pdf'):
-        payload = part.get_payload(decode=True)  # Decode to get bytes-like object (False returns a string)
-        print(f'\n\tRetrieving: {file_name} \n')
+        payload = part.get_payload(decode=True)  # decode to get bytes-like object (False returns a string)
+        print(f'\n\tRetrieving: {file_name}')
+        new_file_name = rename_pdf(subject, file_name)
+        save_pdf(new_file_name, payload)
 
-        # create a folder to store pdf files
-        Path('pdf_files').mkdir(exist_ok=True)
-        subject_suff = subject[-35:]
-        new_file_name = slugify(subject_suff) + '.pdf'
 
-        pdf_path = Path('pdf_files') / Path(new_file_name)
-        with pdf_path.open(mode='wb') as fp:
-            fp.write(payload)
+def rename_pdf(subject, file_name):
+    # create a folder to store pdf files
+    subject_suff = subject[-16:]
+    new_file_name = slugify(subject_suff) + '_' + file_name.split('-')[-1]
+    return new_file_name
+
+
+def save_pdf(new_file_name, payload):
+    pdf_path = usb_drive_root / vinted_labels / new_file_name
+    with pdf_path.open(mode='wb') as fp:
+        fp.write(payload)
+    print(f'\n\tSaving as "{new_file_name}"\n')
 
 
 def send_confirmation(password, sender, torr_files, user_name):
@@ -144,7 +161,7 @@ def send_confirmation(password, sender, torr_files, user_name):
                        f'Have a nice day,\nyour Python Robot')
         msg['To'] = email.utils.formataddr(('', sender))
         msg['From'] = email.utils.formataddr(('Python Robot', usr_gmail))
-        msg['Subject'] = 'PDF file(s) accepted and processed to download'
+        msg['Subject'] = 'PDF file(s) of Vinted downloaded'
         smtp_session.sendmail(usr_gmail, [sender], msg.as_string())
         smtp_session.quit()
         print('\tDone.')
@@ -156,9 +173,10 @@ def delete_mail(email_uid, imap_session):
     print(f'\n\tEmail with UID {uid_decoded} was deleted.')
 
 
-def logout(imap_session):
+def log_out(imap_session):
     print('\n\tLogging out.\n')
     imap_session.close()
+    time.sleep(.5)
     imap_session.logout()
 
 
@@ -174,8 +192,49 @@ def repeat(password, user_name):
     get_labels(user_name, password)
 
 
+def move_away_expired_labels():
+    print(f'\nExpired labels are going to be moved to "{vinted_labels_expired.name}" folder.\n')
+
+    vinted_labels_expired_folder, vinted_labels_folder, _ = create_folders_if_not_exist()
+
+    for pdf in vinted_labels_folder.glob('*.pdf'):
+        try:
+            pdf_date = datetime.strptime(pdf.name[:10], '%d-%m-%Y')
+            today = datetime.now()
+            if pdf_date < today:
+                pdf.replace(Path(vinted_labels_expired_folder) / pdf.name)
+        except ValueError:
+            print(f'\tWARNING: Date could not be parsed from a PDF file "{pdf.name}"\n')
+
+
+def move_away_existing_labels():
+    _, vinted_labels_folder, vinted_labels_used_folder = create_folders_if_not_exist()
+
+    for pdf in vinted_labels_folder.glob('*.pdf'):
+        print(f'\tMoving "{pdf.name}" to "{vinted_labels_used_folder.name}"')
+        pdf.replace(Path(vinted_labels_used_folder) / pdf.name)
+
+
+def create_folders_if_not_exist():
+    # /run/media/standa/KINGSTON/vinted_labels_expired
+    vinted_labels_expired_folder = usb_drive_root / vinted_labels_expired
+    Path(vinted_labels_expired_folder).mkdir(exist_ok=True)
+    # /run/media/standa/KINGSTON/!imprimir
+    vinted_labels_folder = usb_drive_root / vinted_labels
+    Path(vinted_labels_folder).mkdir(exist_ok=True)
+    # /run/media/standa/KINGSTON/vinted_labels_used
+    vinted_labels_used_folder = usb_drive_root / vinted_labels_used
+    Path(vinted_labels_used_folder).mkdir(exist_ok=True)
+
+    return vinted_labels_expired_folder, vinted_labels_folder, vinted_labels_used_folder
+
+
 if __name__ == '__main__':
-    user_name = input('Enter your GMail username: ')
-    password = input('Enter your password: ')
-    # password = getpass.getpass('Enter your password: ')
-    get_labels(user_name, password)
+    user_name_input = input('Enter your GMail username: ')
+    password_input = input('Enter your password: ')
+    # password_input = getpass.getpass('Enter your password: ')
+    move_away_expired_labels()
+    answer = input(f'Move non-expired labels from "{vinted_labels.name}" to "{vinted_labels_used.name}"? y/n:\n')
+    if answer == 'y':
+        move_away_existing_labels()
+    get_labels(user_name_input, password_input)
