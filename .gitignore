@@ -1,4 +1,5 @@
 /venv*
+/vevn
 /pdf_files
 .idea
 *.torrent
