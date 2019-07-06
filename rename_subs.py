@@ -16,6 +16,7 @@ EPISODE_RE = re.compile(r'(.?)(\d?\d)', re.IGNORECASE)
 
 dd = defaultdict(dict)
 
+# TODO: os.listdir('.') might be better
 for _, _, files in os.walk('.'):
 
     for file in files:
